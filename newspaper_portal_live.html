@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Gemini Chronicle - Realtime News</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            font-family: 'Inter', sans-serif;
+            --indigo-500: #6366f1;
+        }
+        /* Breaking News Ticker Animation */
+        @keyframes ticker {
+            0% { transform: translateX(100%); }
+            100% { transform: translateX(-100%); }
+        }
+        .ticker-content {
+            white-space: nowrap;
+            animation: ticker 25s linear infinite;
+            padding-left: 100%; /* Start off-screen */
+        }
+    </style>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        'primary': '#6366f1',
+                        'dark-bg': '#111827', 
+                        'dark-card': '#1f2937',
+                    },
+                }
+            }
+        }
+    </script>
+
+    <!-- FIREBASE SDK IMPORTS (MUST BE TYPE="MODULE") -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, onSnapshot, query, where, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js";
+
+        // Your specific Firebase configuration (corrected format)
+        const firebaseConfig = {
+            apiKey: "AIzaSyDKjvdM56mwcRWStPw24ptnAd-A-_0pkV8",
+            authDomain: "portal-website-38ab1.firebaseapp.com",
+            projectId: "portal-website-38ab1",
+            storageBucket: "portal-website-38ab1.firebasestorage.app",
+            messagingSenderId: "812898135005",
+            appId: "1:812898135005:web:6373ea73c695e61dcc2434",
+            measurementId: "G-RY8L40QL75"
+        };
+
+        window.FirebaseServices = { 
+            initializeApp, getAuth, signInAnonymously, 
+            getFirestore, collection, onSnapshot, query, where, setLogLevel,
+            getAnalytics,
+            firebaseConfig // <-- Expose the configuration
+        };
+    </script>
+</head>
+<body class="bg-gray-50 dark:bg-dark-bg transition-colors duration-500">
+
+    <!-- BREAKING NEWS TICKER -->
+    <div class="bg-primary text-white text-sm font-medium py-2 overflow-hidden shadow-md">
+        <div class="flex items-center mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <span class="bg-red-600 px-3 py-1 mr-4 rounded-md flex-shrink-0">BREAKING</span>
+            <div class="ticker-content">
+                New articles loaded in real-time from the CMS dashboard. This data is live! &bull; Global Markets React to Inflation Spike &bull; Local authorities issue new safety guidelines...
+            </div>
+        </div>
+    </div>
+
+    <!-- HEADER & NAVIGATION -->
+    <header class="bg-white dark:bg-dark-bg shadow-sm sticky top-0 z-10 transition-colors duration-500">
+        <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <!-- Logo -->
+                <div class="flex-shrink-0">
+                    <span class="text-2xl font-extrabold text-gray-900 dark:text-white">The Gemini Chronicle</span>
+                </div>
+                
+                <!-- Desktop Navigation -->
+                <nav class="hidden lg:flex lg:space-x-4">
+                    <a href="#" class="text-gray-500 dark:text-gray-400 hover:text-primary dark:hover:text-primary font-semibold transition duration-200 p-2 rounded-lg">Home</a>
+                    <a href="#" class="text-blue-500 font-semibold p-2 rounded-lg bg-blue-50 dark:bg-gray-800">Politics</a>
+                    <a href="#" class="text-green-500 font-semibold p-2 rounded-lg bg-green-50 dark:bg-gray-800">Business</a>
+                    <a href="#" class="text-gray-500 dark:text-gray-400 hover:text-primary font-semibold p-2 rounded-lg">World</a>
+                    <a href="#" class="text-gray-500 dark:text-gray-400 hover:text-primary font-semibold p-2 rounded-lg">Tech</a>
+                    <a href="#" class="text-gray-500 dark:text-gray-400 hover:text-primary font-semibold p-2 rounded-lg">Opinion</a>
+                </nav>
+
+                <!-- Utility Section (Search, Dark Mode Toggle) -->
+                <div class="flex items-center space-x-4">
+                    <button class="text-gray-500 dark:text-gray-400 hover:text-primary transition duration-200">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    </button>
+                    <!-- Dark Mode Toggle -->
+                    <button id="theme-toggle" class="p-2 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 transition duration-300">
+                        <svg xmlns="http://www.w3.org/2000/svg" id="light-icon" class="w-5 h-5 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" id="dark-icon" class="w-5 h-5 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg>
+                    </button>
+                    <!-- Mobile Menu Button -->
+                    <button id="mobile-menu-button" class="lg:hidden p-2 text-gray-500 dark:text-gray-400 hover:text-primary transition duration-200">
+                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <!-- Mobile Menu (Hidden by default) -->
+        <div id="mobile-menu" class="lg:hidden hidden bg-white dark:bg-dark-bg border-t border-gray-200 dark:border-gray-800">
+             <div class="px-2 pt-2 pb-3 space-y-1 sm:px-3 flex flex-col">
+                <a href="#" class="text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-primary block px-3 py-2 rounded-md text-base font-medium">Home</a>
+                <a href="#" class="text-blue-500 hover:bg-gray-100 dark:hover:bg-gray-700 block px-3 py-2 rounded-md text-base font-medium">Politics</a>
+                <!-- ... other mobile links -->
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN CONTENT AREA -->
+    <main class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 md:py-12">
+        <div class="lg:grid lg:grid-cols-12 lg:gap-10">
+            
+            <!-- ARTICLE MAIN AREA (COL-SPAN-8) -->
+            <div class="lg:col-span-8">
+                
+                <h1 class="text-4xl font-extrabold text-gray-900 dark:text-white mb-6">Latest Headlines</h1>
+
+                <!-- FEATURED ARTICLES / CAROUSEL -->
+                <section id="featured-articles" class="mb-12">
+                    <div class="w-full bg-gray-200 dark:bg-gray-800 p-8 rounded-xl flex items-center justify-center">
+                        <p class="text-gray-600 dark:text-gray-400">Loading articles from CMS...</p>
+                    </div>
+                </section>
+
+                <!-- ARTICLE GRID SECTION -->
+                <section id="article-grid">
+                    <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-6 border-b pb-2 dark:border-gray-700">Recent Posts</h2>
+                    <div class="grid sm:grid-cols-2 gap-8" id="recent-articles-container">
+                        <!-- Articles will be rendered here dynamically -->
+                        <div class="text-gray-500 dark:text-gray-400 sm:col-span-2 text-center py-10">
+                            Waiting for **Published** articles from the CMS...
+                        </div>
+                    </div>
+                </section>
+
+            </div>
+
+            <!-- SIDEBAR (COL-SPAN-4) -->
+            <aside class="lg:col-span-4 mt-12 lg:mt-0 space-y-8">
+                
+                <!-- Today's Brief / Weather Widget -->
+                <div class="bg-white dark:bg-dark-card p-6 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
+                    <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2 text-primary"><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="M4.93 4.93l1.41 1.41"></path><path d="M17.66 17.66l1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="M6.34 17.66l-1.41 1.41"></path><path d="M19.07 4.93l-1.41 1.41"></path><path d="M12 8a4 4 0 0 0-4 4"></path><path d="M12 10a2 2 0 0 1 2 2"></path></svg>
+                        Today's Brief
+                    </h3>
+                    <p class="text-4xl font-light text-primary mb-2">24°C, Sunny</p>
+                    <p class="text-gray-600 dark:text-gray-400 text-sm">Key local updates for the day: Traffic warnings on I-95. Council meeting at 7 PM. All parks open.</p>
+                </div>
+
+                <!-- Trending Now -->
+                <div class="bg-white dark:bg-dark-card p-6 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
+                    <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-4">Trending Now</h3>
+                    <ul class="space-y-3">
+                        <li class="text-gray-700 dark:text-gray-300 hover:text-primary transition duration-150 cursor-pointer text-sm">#1: Local housing market stabilizes</li>
+                        <li class="text-gray-700 dark:text-gray-300 hover:text-primary transition duration-150 cursor-pointer text-sm">#2: Interview with the new Police Chief</li>
+                        <li class="text-gray-700 dark:text-gray-300 hover:text-primary transition duration-150 cursor-pointer text-sm">#3: Best summer road trips revealed</li>
+                    </ul>
+                </div>
+
+                <!-- Editor's Picks -->
+                <div class="bg-white dark:bg-dark-card p-6 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700">
+                    <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-4">Editor's Picks</h3>
+                    <p class="text-gray-600 dark:text-gray-400 text-sm">Long read: The future of remote work culture.</p>
+                </div>
+
+            </aside>
+        </div>
+    </main>
+
+    <!-- SUBSCRIPTION MODAL -->
+    <div id="subscription-modal" class="fixed inset-0 z-50 bg-black bg-opacity-70 hidden flex items-center justify-center p-4" aria-modal="true" role="dialog">
+        <div class="bg-white dark:bg-dark-card p-8 rounded-xl shadow-2xl max-w-sm w-full relative transform transition-all duration-500 scale-95 opacity-0" id="modal-content">
+            <button class="absolute top-3 right-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" onclick="closeModal()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+            <div class="text-center">
+                <h3 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">Don't Miss the Next Story!</h3>
+                <p class="text-gray-600 dark:text-gray-400 mb-4">Subscribe to our daily newsletter for instant updates.</p>
+                <input type="email" placeholder="Enter your email address" class="w-full p-3 mb-4 border border-gray-300 rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white focus:ring-primary focus:border-primary" />
+                <button class="w-full py-3 bg-primary text-white font-semibold rounded-lg hover:bg-indigo-600 transition duration-200 shadow-md">Subscribe Now</button>
+                <button class="mt-3 w-full text-sm text-gray-500 dark:text-gray-400 hover:underline" onclick="closeModal()">Remind Me Later</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- FOOTER -->
+    <footer class="bg-white dark:bg-gray-900 mt-16 border-t border-gray-200 dark:border-gray-800 transition-colors duration-500">
+        <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-8">
+                <div>
+                    <h4 class="text-lg font-bold text-gray-900 dark:text-white mb-4">About Us</h4>
+                    <ul class="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                        <li><a href="#" class="hover:text-primary transition">Our Mission</a></li>
+                        <li><a href="#" class="hover:text-primary transition">Editorial Team</a></li>
+                        <li><a href="#" class="hover:text-primary transition">Careers</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="text-lg font-bold text-gray-900 dark:text-white mb-4">Support</h4>
+                    <ul class="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                        <li><a href="#" class="hover:text-primary transition">Contact</a></li>
+                        <li><a href="#" class="hover:text-primary transition">Help Center</a></li>
+                        <li><a href="#" class="hover:text-primary transition">Privacy Policy</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="text-lg font-bold text-gray-900 dark:text-white mb-4">Social</h4>
+                    <div class="flex space-x-3 text-gray-500 dark:text-gray-400">
+                        <a href="#" class="hover:text-primary transition"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg></a>
+                        <a href="#" class="hover:text-primary transition"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M22.46 6c-.77.35-1.6.58-2.46.68.88-.53 1.56-1.37 1.88-2.38-.8.47-1.69.8-2.63.98-2.35-2.28-5.32-2.31-7.7.07-1.28 1.28-1.95 3.06-1.95 4.88v.5c-3.95-.2-7.44-2.08-9.78-4.9-.4 1.1-.6 2.36-.6 3.65 0 2.45 1.25 4.6 3.16 5.86-1.02-.03-2-.32-2.83-.78v.06c0 3.2 2.2 5.8 5.1 6.4-1.07.3-2.2.35-3.32.12.8 2.5 3.1 4.2 5.84 4.25-2.2 1.7-4.98 2.58-7.77 2.58h-1.56c2.8 1.7 6.1 2.6 9.4 2.6 11.28 0 17.43-9.35 17.43-17.43v-.75c1.2-.84 2.25-1.97 3.07-3.25z"/></svg></a>
+                        <a href="#" class="hover:text-primary transition"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19 0H5a5 5 0 0 0-5 5v14a5 5 0 0 0 5 5h14a5 5 0 0 0 5-5V5a5 5 0 0 0-5-5zM8 19H5V8h3v11zM6.5 6.22c-.97 0-1.75-.77-1.75-1.75s.78-1.75 1.75-1.75 1.75.78 1.75 1.75-.78 1.75-1.75 1.75zM20 19h-3v-5.63c0-1.35-.48-2.31-1.72-2.31-1.37 0-2.18.94-2.18 2.31V19h-3V8h3v1.38c.68-1.04 1.8-1.57 3.05-1.57 2.1 0 3.85 1.3 3.85 4.67V19z"/></svg></a>
+                    </div>
+                </div>
+                <!-- Subscription CTA (Footer) -->
+                <div class="md:col-span-1 col-span-2">
+                    <h4 class="text-lg font-bold text-gray-900 dark:text-white mb-4">Stay Informed</h4>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">Get the latest news directly to your inbox.</p>
+                    <button class="w-full py-2 bg-primary text-white font-semibold rounded-lg hover:bg-indigo-600 transition duration-200" onclick="showModal()">Subscribe</button>
+                </div>
+            </div>
+            <div class="mt-8 pt-4 border-t border-gray-100 dark:border-gray-800 text-center text-sm text-gray-500 dark:text-gray-400">
+                &copy; 2025 The Gemini Chronicle. All rights reserved. Powered by Firebase.
+            </div>
+        </div>
+    </footer>
+
+
+    <script>
+        // --- GLOBAL STATE & UTILITIES ---
+        let publishedArticles = [];
+        
+        // --- RENDERING FUNCTIONS ---
+
+        function getCategoryColor(category) {
+            switch(category) {
+                case 'Politics': return 'text-red-500';
+                case 'Business': return 'text-green-500';
+                case 'Tech': return 'text-indigo-500';
+                case 'World': return 'text-blue-500';
+                case 'Sports': return 'text-yellow-500';
+                default: return 'text-gray-500';
+            }
+        }
+
+        function createCardHTML(article) {
+            const categoryColor = getCategoryColor(article.category);
+            const formattedDate = article.date ? new Date(article.date.seconds * 1000).toLocaleDateString() : 'N/A';
+            const readTime = article.readTime || 5;
+
+            return `
+                <article class="bg-white dark:bg-dark-card rounded-xl shadow-lg hover:shadow-xl transition duration-300 overflow-hidden cursor-pointer">
+                    <!-- Placeholder Image (Since Firestore only stores URLs) -->
+                    <img src="https://placehold.co/600x400/6366f1/ffffff?text=${article.category.toUpperCase()}" 
+                         alt="${article.title}" 
+                         class="w-full h-48 object-cover transition duration-300 hover:scale-[1.03]" />
+                    
+                    <div class="p-5 space-y-3">
+                        <span class="text-xs font-bold uppercase ${categoryColor}">${article.category}</span>
+                        <h3 class="text-xl font-bold text-gray-900 dark:text-white leading-snug hover:text-primary transition">${article.title}</h3>
+                        <div class="flex items-center text-sm text-gray-500 dark:text-gray-400 space-x-3">
+                            <span>By ${article.authorName || 'Staff'}</span>
+                            <span>•</span>
+                            <span>${formattedDate}</span>
+                            <span>•</span>
+                            <span>${readTime} min read</span>
+                        </div>
+                    </div>
+                </article>
+            `;
+        }
+
+        function renderFeaturedSection(articles) {
+            const container = document.getElementById('featured-articles');
+            
+            if (articles.length === 0) {
+                container.innerHTML = `<div class="bg-gray-100 dark:bg-gray-800 p-8 rounded-xl text-center"><p class="text-gray-600 dark:text-gray-400">No published articles available yet. Check the Admin Dashboard!</p></div>`;
+                return;
+            }
+
+            const featuredArticle = articles[0];
+            const secondaryArticles = articles.slice(1, 4);
+
+            const secondaryHTML = secondaryArticles.map(article => {
+                const categoryColor = getCategoryColor(article.category);
+                return `
+                    <div class="p-4 bg-white dark:bg-gray-800 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+                        <span class="text-xs font-semibold uppercase ${categoryColor} mb-1 block">${article.category}</span>
+                        <h4 class="text-lg font-bold text-gray-900 dark:text-white hover:text-primary transition">${article.title}</h4>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">${article.authorName || 'Staff'} • ${article.readTime || 4} min read</p>
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = `
+                <div class="grid lg:grid-cols-3 gap-6">
+                    <!-- Lead Featured Article (Col 1 & 2) -->
+                    <article class="lg:col-span-2 bg-white dark:bg-dark-card rounded-xl shadow-2xl overflow-hidden cursor-pointer group">
+                        <img src="https://placehold.co/1000x500/1e40af/ffffff?text=FEATURED+${featuredArticle.category.toUpperCase()}" 
+                             alt="${featuredArticle.title}" 
+                             class="w-full h-72 object-cover transition duration-500 group-hover:scale-[1.03]"/>
+                        <div class="p-6">
+                            <h2 class="text-3xl font-extrabold text-gray-900 dark:text-white leading-tight group-hover:text-primary transition">${featuredArticle.title}</h2>
+                            <p class="mt-2 text-gray-600 dark:text-gray-400">${featuredArticle.content.substring(0, 100)}...</p>
+                            <span class="mt-4 inline-block text-sm font-semibold text-primary">Read Full Story &rarr;</span>
+                        </div>
+                    </article>
+                    
+                    <!-- Secondary Headlines (Col 3) -->
+                    <div class="lg:col-span-1 space-y-4">
+                        ${secondaryHTML}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderArticleGrid(articles) {
+            const container = document.getElementById('recent-articles-container');
+            // Skip the first 4 (used in featured section)
+            const gridArticles = articles.slice(4); 
+
+            if (gridArticles.length === 0 && articles.length < 5) {
+                container.innerHTML = `<div class="text-gray-500 dark:text-gray-400 sm:col-span-2 text-center py-10">
+                    Not enough published articles (min 5 required) to fill the grid. Add more in the CMS!
+                </div>`;
+                return;
+            }
+
+            const articleCardsHTML = gridArticles.map(createCardHTML).join('');
+            container.innerHTML = articleCardsHTML;
+        }
+
+        function renderContent() {
+            // Render the two main sections using the live data
+            renderFeaturedSection(publishedArticles);
+            renderArticleGrid(publishedArticles);
+        }
+
+        // --- FIREBASE AND AUTHENTICATION SETUP (READ-ONLY) ---
+        async function initFirebase() {
+            const { initializeApp, getAuth, signInAnonymously, getFirestore, collection, onSnapshot, query, where, setLogLevel, getAnalytics, firebaseConfig } = window.FirebaseServices;
+            
+            try {
+                // 1. Setup Environment Variables (Using hardcoded config)
+                const appId = firebaseConfig.projectId;
+
+                // 2. Initialize App, Services, and Analytics
+                const app = initializeApp(firebaseConfig);
+                const db = getFirestore(app);
+                const auth = getAuth(app);
+                const analytics = getAnalytics(app); // INITIALIZE ANALYTICS
+                setLogLevel('error'); 
+
+                // 3. Authenticate Anonymously (Public Read Access)
+                await signInAnonymously(auth);
+                
+                // 4. Setup Real-time Listener for *PUBLISHED* articles
+                const collectionPath = `artifacts/${appId}/public/data/cms_articles`;
+                const articlesRef = collection(db, collectionPath);
+                
+                // Query to only retrieve documents where 'status' is 'Published'
+                const publishedQuery = query(articlesRef, where("status", "==", "Published"));
+                
+                onSnapshot(publishedQuery, (snapshot) => {
+                    const newPublishedArticles = [];
+                    snapshot.forEach(doc => {
+                        newPublishedArticles.push({ id: doc.id, ...doc.data() });
+                    });
+                    
+                    // Client-side sort by date (newest first)
+                    newPublishedArticles.sort((a, b) => {
+                        const dateA = a.date ? a.date.seconds : 0;
+                        const dateB = b.date ? b.date.seconds : 0;
+                        return dateB - dateA;
+                    });
+
+                    publishedArticles = newPublishedArticles;
+                    renderContent(); // Re-render the UI with fresh data
+                }, (error) => {
+                    console.error("Firestore Listener Error on Portal:", error);
+                });
+
+            } catch (error) {
+                console.error("Firebase Initialization Error:", error);
+                document.getElementById('featured-articles').innerHTML = `<p class="text-red-500 p-8">Error connecting to database. Check console for details.</p>`;
+            }
+        }
+
+        // --- MODAL AND THEME LOGIC (RETAINED FROM ORIGINAL) ---
+        
+        const MODAL_APPEAR_DELAY_MS = 5000;
+        const MODAL_SCROLL_PERCENTAGE = 0.25;
+        let modalShown = sessionStorage.getItem('subscriptionModalShown') === 'true';
+
+        function showModal() {
+            if (modalShown) return;
+            const modal = document.getElementById('subscription-modal');
+            const content = document.getElementById('modal-content');
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                content.classList.remove('scale-95', 'opacity-0');
+            }, 10);
+            sessionStorage.setItem('subscriptionModalShown', 'true');
+            modalShown = true;
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('subscription-modal');
+            const content = document.getElementById('modal-content');
+            content.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+            }, 500);
+        }
+
+        function setupModalTriggers() {
+            // Trigger 1: Delay
+            if (!modalShown) {
+                setTimeout(showModal, MODAL_APPEAR_DELAY_MS);
+            }
+            // Trigger 2: Scroll
+            window.addEventListener('scroll', () => {
+                if (modalShown) return;
+                const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
+                const scrollPosition = window.scrollY;
+                if (scrollPosition > scrollHeight * MODAL_SCROLL_PERCENTAGE) {
+                    showModal();
+                }
+            });
+        }
+        
+        function setupThemeToggle() {
+            const toggleButton = document.getElementById('theme-toggle');
+            const lightIcon = document.getElementById('light-icon');
+            const darkIcon = document.getElementById('dark-icon');
+            
+            const isDarkMode = localStorage.getItem('theme') === 'dark' || 
+                                (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches);
+
+            const applyTheme = (isDark) => {
+                document.documentElement.classList.toggle('dark', isDark);
+                lightIcon.classList.toggle('hidden', isDark);
+                darkIcon.classList.toggle('hidden', !isDark);
+                localStorage.setItem('theme', isDark ? 'dark' : 'light');
+            };
+
+            // Initial apply
+            applyTheme(isDarkMode);
+
+            // Toggle Handler
+            toggleButton.addEventListener('click', () => {
+                const newIsDark = !document.documentElement.classList.contains('dark');
+                applyTheme(newIsDark);
+            });
+        }
+        
+        function setupMobileMenu() {
+            const button = document.getElementById('mobile-menu-button');
+            const menu = document.getElementById('mobile-menu');
+            button.addEventListener('click', () => {
+                menu.classList.toggle('hidden');
+            });
+        }
+
+        // --- INITIALIZATION ---
+        window.onload = function() {
+            initFirebase();
+            setupThemeToggle();
+            setupModalTriggers();
+            setupMobileMenu();
+        };
+
+    </script>
+</body>
+</html>
